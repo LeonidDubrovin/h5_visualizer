@@ -4,12 +4,12 @@ import os
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
-from PyQt6 import QtWidgets, QtCore
+from PyQt6 import QtWidgets, QtCore, QtGui
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.widgets import RectangleSelector
+from matplotlib.widgets import RectangleSelector, SpanSelector
 import matplotlib
 from matplotlib.backend_bases import MouseButton
 
@@ -19,20 +19,46 @@ from settings import SettingsEditDialog
 matplotlib.use('QT5Agg')
 
 
-class TableModel(QtCore.QAbstractTableModel):
+class TableDataModel(QtCore.QAbstractTableModel):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._data = np.empty(shape=0)
-        self.headers = {}
+        self._headers = {}
+        self._marked_rows = []
+
+    def get_data(self) -> np.ndarray:
+        return self._data
+
+    def get_marked_data_for_save(self):
+        mark_arr = np.array([np.array(['x' if val else ' ']) for val in self._marked_rows])
+        data = self._data.astype(str)
+        return np.hstack((data, mark_arr))
+
+    def get_headers(self):
+        return self._headers
+
+    def get_marked_rows(self) -> list:
+        return self._marked_rows
 
     def set_items(self, items):
         self.beginResetModel()
         self._data = items
+        self.update_marked_rows(np.empty(shape=0))
         self.endResetModel()
 
     def set_headers(self, headers):
         self.beginResetModel()
-        self.headers = headers
+        self._headers = headers
+        self.endResetModel()
+
+    def update_marked_rows(self, marks: np.ndarray):
+        self.beginResetModel()
+        self._marked_rows = [False] * self._data.shape[0]
+        for mark in marks:
+            for idx, row_arr in enumerate(self._data):
+                if mark.xmin <= row_arr[0] <= mark.xmax:
+                    self._marked_rows[idx] = True
+
         self.endResetModel()
 
     def around_data(self, accuracy: int):
@@ -54,16 +80,78 @@ class TableModel(QtCore.QAbstractTableModel):
             value = self._data[index.row(), index.column()]
             return str(value)
 
+        if role == QtCore.Qt.ItemDataRole.BackgroundRole:
+            if self._marked_rows[index.row()]:
+                bgColor = QtGui.QColor(255, 0, 0, 127)
+                return QtCore.QVariant(QtGui.QColor(bgColor))
+
     def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: QtCore.Qt.ItemDataRole):
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             if orientation == QtCore.Qt.Orientation.Horizontal:
-                return self.headers.get(section)
+                return self._headers.get(section)
+
+
+class Mark:
+    xmin = None
+    xmax = None
+
+    def __init__(self, xmin, xmax):
+        self.xmin = xmin
+        self.xmax = xmax
+
+
+class TableMarksModel(QtCore.QAbstractTableModel):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._marks = np.empty(shape=0)
+
+    def get_marks(self):
+        return self._marks
+
+    def set_marks(self, marks):
+        self.beginResetModel()
+        self._marks = marks
+        self.endResetModel()
+
+    def add_mark(self, mark: Mark):
+        self.beginResetModel()
+        self._marks = np.append(self._marks, mark)
+        self.endResetModel()
+
+    def rowCount(self, *args, **kwargs) -> int:
+        return len(self._marks)
+
+    def columnCount(self, *args, **kwargs) -> int:
+        # вывод в одну колонку
+        return 1
+
+    def delete_mark(self, item):
+        self.set_marks(np.delete(self._marks, item.row()))
+
+    def delete_marks(self):
+        self.set_marks(np.empty(shape=0))
+
+    def data(self, index: QtCore.QModelIndex, role: QtCore.Qt.ItemDataRole):
+        if not index.isValid():
+            return
+
+        if role == QtCore.Qt.ItemDataRole.DisplayRole:
+            item = self._marks[index.row()]
+            return "{0:0.2f}  |  ".format(item.xmin) + "{0:0.2f}".format(item.xmax)
+
+    def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: QtCore.Qt.ItemDataRole):
+        if role == QtCore.Qt.ItemDataRole.DisplayRole:
+            if orientation == QtCore.Qt.Orientation.Horizontal:
+                return "Метки"
 
 
 class MyPlot:
-
     _canvas = None
     _static_ax = None
+    _current_xmin = None
+    _current_xmax = None
+
+    _span_marks = None
 
     def __init__(self):
         self._canvas = FigureCanvas(plt.figure())
@@ -75,23 +163,53 @@ class MyPlot:
     def get_ax(self):
         return self._static_ax
 
+    def get_xmin_xmax(self):
+        return self._current_xmin, self._current_xmax
+
+    def add_span_mark(self, xmin: float, xmax: float):
+        self._static_ax.axvspan(xmin=xmin, xmax=xmax, facecolor ='0.5', alpha = 0.5)
+
+    def draw_plot(self, data: np.array, headers: dict, marks):
+        self.get_ax().cla()
+
+        if len(data.shape) == 2:
+            cols = data.shape[1]
+            for i in range(1, cols):
+                self.get_ax().scatter(data[:, 0], data[:, i], label=headers[i])
+
+        self.get_ax().grid(True, color="grey", linewidth="0.4", linestyle="-.")
+        self.get_ax().legend()
+
+        toggle_selector = self.get_selector(self.get_ax())
+        plt.connect('key_press_event', toggle_selector)
+
+        for mark in marks:
+            self.add_span_mark(mark.xmin, mark.xmax)
+
+        self.get_canvas().draw()
+
+    @staticmethod
+    def deactivate_selector():
+        MyPlot._current_xmin = None
+        MyPlot._current_xmax = None
+        MyPlot.toggle_selector.SS.clear()
+
     @staticmethod
     def get_selector(ax):
-        MyPlot.toggle_selector.RS = RectangleSelector(ax, MyPlot.line_select_callback,
-                                                      useblit=True,
-                                                      button=[1],
-                                                      minspanx=5, minspany=5,
-                                                      spancoords='pixels',
-                                                      interactive=True)
+        MyPlot.toggle_selector.SS = SpanSelector(ax, MyPlot.line_select_callback,
+                                                 "horizontal",
+                                                 button=[MouseButton.LEFT],
+                                                 useblit=True,
+                                                 props=dict(alpha=0.5, facecolor="tab:blue"),
+                                                 interactive=True,
+                                                 drag_from_anywhere=True)
         return MyPlot.toggle_selector
 
     @staticmethod
-    def line_select_callback(eclick, erelease):
-        'eclick and erelease are the press and release events'
-        x1, y1 = eclick.xdata, eclick.ydata
-        x2, y2 = erelease.xdata, erelease.ydata
-        # print("(%3.2f, %3.2f) --> (%3.2f, %3.2f)" % (x1, y1, x2, y2))
-        # print(" The button you used were: %s %s" % (eclick.button, erelease.button))
+    def line_select_callback(xmin, xmax):
+        print("xmin, xmax: ", xmin, xmax)
+        MyPlot._current_xmin = xmin
+        MyPlot._current_xmax = xmax
 
     @staticmethod
     def toggle_selector(event):
@@ -117,30 +235,30 @@ class MainApp(QtWidgets.QMainWindow):
         self.ui.menuActionOpen_h5.triggered.connect(self.on_btnOpenH5File_click)
         self.ui.menuActionSave_csv.triggered.connect(self.on_btnSaveCvsFile_click)
         self.ui.menuActionEditSettings.triggered.connect(self.on_btnEditSettings_click)
+        self.ui.btnAddMark.clicked.connect(self.on_btnAddMark_click)
+        self.ui.btnDeleteMark.clicked.connect(self.on_btnDeleteMark_click)
 
-        self.table_model = TableModel()
-        self.lastTblItemsItemClicked = None
-        self.ui.tableView.setModel(self.table_model)
-        self.ui.tableView.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self._table_data = TableDataModel()
+        self.ui.tableViewData.setModel(self._table_data)
+        self.ui.tableViewData.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+
+        self._table_marks = TableMarksModel()
+        self.ui.tableViewMarks.setModel(self._table_marks)
+        self.ui.tableViewMarks.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
 
         self.setWindowTitle("h5 visualizer")
-        self.update_plot()
+        self.draw_graphic()
 
-    def update_plot(self):
-        self._my_plot.get_ax().cla()
-        data = self.table_model._data
-        if data.shape and data.shape[0]:
-            if len(data.shape) == 2:
-                cols = data.shape[1]
-                for i in range(1, cols):
-                    self._my_plot.get_ax().scatter(data[:, 0], data[:, i], label=self.table_model.headers[i])
+    def update_app(self):
+        self._table_marks.delete_marks()
+        self.draw_graphic()
 
-            self._my_plot.get_ax().grid(True, color="grey", linewidth="0.4", linestyle="-.")
-            self._my_plot.get_ax().legend()
-
-            toggle_selector = MyPlot.get_selector(self._my_plot.get_ax())
-            plt.connect('key_press_event', toggle_selector)
-            self._my_plot.get_canvas().draw()
+    def draw_graphic(self):
+        data = self._table_data.get_data()
+        if data.size and data.shape and data.shape[0]:
+            self._my_plot.draw_plot(data=data,
+                                    headers=self._table_data.get_headers(),
+                                    marks=self._table_marks.get_marks())
 
     def on_btnOpenH5File_click(self):
         file = QtWidgets.QFileDialog.getOpenFileName(self, "Выберите файл", filter="h5 (*.h5);;hdf5  (*.hdf5)")
@@ -161,20 +279,23 @@ class MainApp(QtWidgets.QMainWindow):
                     arr = np.asarray(list(map(float, ds_arr[i])), dtype='float64')
                     float_arr[i] = arr
 
-                self.table_model.set_headers(dict_names)
-                self.table_model.set_items(float_arr)
-                self.table_model.around_data(self.csv_accuracy)
-                self.update_plot()
+                res_arr = np.around(float_arr, self.csv_accuracy)
+                self._table_data.set_headers(dict_names)
+                self._table_data.set_items(res_arr)
+
+                self.update_app()
 
     def on_btnSaveCvsFile_click(self):
         try:
             file = QtWidgets.QFileDialog.getSaveFileName(self, 'Сохранить файл', 'data', "csv (*.csv)")
             if file and file[0]:
-                names = list(self.table_model.headers.values())
+                res_data = self._table_data.get_marked_data_for_save()
+
+                names = list(self._table_data.get_headers().values())
                 np.savetxt(file[0], names, newline=self.csv_delimiter, fmt="%s")
                 with open(file[0], 'ab') as f:
                     np.savetxt(f, [''], delimiter=self.csv_delimiter, fmt="%s")
-                    np.savetxt(f, self.table_model._data, delimiter=self.csv_delimiter, fmt=f"%.{self.csv_accuracy}f")
+                    np.savetxt(f, res_data, delimiter=self.csv_delimiter, fmt="%s")
                 QtWidgets.QMessageBox.about(self, "Save csv", "Данные успешно сохранены в файл: " + file[0])
             else:
                 raise Exception("Данные не сохранены в файл")
@@ -196,6 +317,25 @@ class MainApp(QtWidgets.QMainWindow):
                 self.csv_accuracy = int(float(data['csv_accuracy']))
             except:
                 pass
+
+    def on_btnAddMark_click(self):
+        xmin, xmax = self._my_plot.get_xmin_xmax()
+        print("add mark: ", xmin, xmax)
+        if xmin and xmax:
+            self._table_marks.add_mark(Mark(xmin=xmin, xmax=xmax))
+            self._table_data.update_marked_rows(self._table_marks.get_marks())
+            self._my_plot.draw_plot(data=self._table_data.get_data(),
+                                    headers=self._table_data.get_headers(),
+                                    marks=self._table_marks.get_marks())
+
+    def on_btnDeleteMark_click(self):
+        item = self.ui.tableViewMarks.currentIndex()
+        if item.isValid():
+            self._table_marks.delete_mark(item)
+            self._table_data.update_marked_rows(self._table_marks.get_marks())
+            self._my_plot.draw_plot(data=self._table_data.get_data(),
+                                    headers=self._table_data.get_headers(),
+                                    marks=self._table_marks.get_marks())
 
 
 def main():
