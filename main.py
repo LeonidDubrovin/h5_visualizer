@@ -15,6 +15,7 @@ from matplotlib.backend_bases import MouseButton
 
 from ui.main_window import Ui_MainWindow
 from settings import SettingsEditDialog
+from pan_and_zoom import PanAndZoom
 
 matplotlib.use('QT5Agg')
 
@@ -154,7 +155,9 @@ class MyPlot:
     _span_marks = None
 
     def __init__(self):
-        self._canvas = FigureCanvas(plt.figure())
+        fig = plt.figure()
+        fig.pan_zoom = PanAndZoom(fig)
+        self._canvas = FigureCanvas(fig)
         self._static_ax = self._canvas.figure.subplots()
 
     def get_canvas(self):
@@ -166,27 +169,34 @@ class MyPlot:
     def get_xmin_xmax(self):
         return self._current_xmin, self._current_xmax
 
+    @staticmethod
+    def clear_xmin_xmax():
+        MyPlot._current_xmin = None
+        MyPlot._current_xmax = None
+
     def add_span_mark(self, xmin: float, xmax: float):
         self._static_ax.axvspan(xmin=xmin, xmax=xmax, facecolor ='0.5', alpha = 0.5)
 
     def draw_plot(self, data: np.array, headers: dict, marks):
-        self.get_ax().cla()
+        self._static_ax.cla()
 
         if len(data.shape) == 2:
             cols = data.shape[1]
             for i in range(1, cols):
-                self.get_ax().scatter(data[:, 0], data[:, i], label=headers[i])
+                # scatter or plot
+                self._static_ax.scatter(data[:, 0], data[:, i], label=headers[i])
 
-        self.get_ax().grid(True, color="grey", linewidth="0.4", linestyle="-.")
-        self.get_ax().legend()
+        self._static_ax.grid(True, color="grey", linewidth="0.4", linestyle="-.")
+        self._static_ax.legend()
+        plt.xlabel(headers[0])
 
-        toggle_selector = self.get_selector(self.get_ax())
+        toggle_selector = self.get_selector(self._static_ax)
         plt.connect('key_press_event', toggle_selector)
 
         for mark in marks:
             self.add_span_mark(mark.xmin, mark.xmax)
 
-        self.get_canvas().draw()
+        self._canvas.draw()
 
     @staticmethod
     def deactivate_selector():
@@ -300,7 +310,7 @@ class MainApp(QtWidgets.QMainWindow):
             else:
                 raise Exception("Данные не сохранены в файл")
         except Exception as ex:
-            QtWidgets.QMessageBox.about(self, "Ошибка сохранения в файл", str(ex))
+            QtWidgets.QMessageBox.about(self, "Ошибка сохранения в файл: ", str(ex))
 
     def on_btnEditSettings_click(self):
         dialog = SettingsEditDialog(self.csv_delimiter, self.csv_accuracy)
@@ -319,23 +329,29 @@ class MainApp(QtWidgets.QMainWindow):
                 pass
 
     def on_btnAddMark_click(self):
-        xmin, xmax = self._my_plot.get_xmin_xmax()
-        print("add mark: ", xmin, xmax)
-        if xmin and xmax:
-            self._table_marks.add_mark(Mark(xmin=xmin, xmax=xmax))
-            self._table_data.update_marked_rows(self._table_marks.get_marks())
-            self._my_plot.draw_plot(data=self._table_data.get_data(),
-                                    headers=self._table_data.get_headers(),
-                                    marks=self._table_marks.get_marks())
+        try:
+            xmin, xmax = self._my_plot.get_xmin_xmax()
+            if xmin and xmax:
+                self._my_plot.clear_xmin_xmax()
+                self._table_marks.add_mark(Mark(xmin=xmin, xmax=xmax))
+                self._table_data.update_marked_rows(self._table_marks.get_marks())
+                self._my_plot.draw_plot(data=self._table_data.get_data(),
+                                        headers=self._table_data.get_headers(),
+                                        marks=self._table_marks.get_marks())
+        except Exception as ex:
+            QtWidgets.QMessageBox.about(self, "Ошибка добавления метки: ", str(ex))
 
     def on_btnDeleteMark_click(self):
-        item = self.ui.tableViewMarks.currentIndex()
-        if item.isValid():
-            self._table_marks.delete_mark(item)
-            self._table_data.update_marked_rows(self._table_marks.get_marks())
-            self._my_plot.draw_plot(data=self._table_data.get_data(),
-                                    headers=self._table_data.get_headers(),
+        try:
+            item = self.ui.tableViewMarks.currentIndex()
+            if item.isValid():
+                self._table_marks.delete_mark(item)
+                self._table_data.update_marked_rows(self._table_marks.get_marks())
+                self._my_plot.draw_plot(data=self._table_data.get_data(),
+                                        headers=self._table_data.get_headers(),
                                     marks=self._table_marks.get_marks())
+        except Exception as ex:
+            QtWidgets.QMessageBox.about(self, "Ошибка удаления метки: ", str(ex))
 
 
 def main():
