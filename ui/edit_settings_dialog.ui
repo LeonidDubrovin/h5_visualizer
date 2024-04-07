@@ -17,14 +17,14 @@
    <item row="0" column="0">
     <widget class="QLabel" name="label_2">
      <property name="text">
-      <string>csv delimeter</string>
+      <string>Разделитель в csv файле</string>
      </property>
     </widget>
    </item>
    <item row="2" column="0">
     <widget class="QLabel" name="label">
      <property name="text">
-      <string>количество цифр после запятой в csv</string>
+      <string>Количество цифр после запятой в csv файле</string>
      </property>
     </widget>
    </item>

@@ -14,7 +14,8 @@ import matplotlib
 from matplotlib.backend_bases import MouseButton
 
 from ui.main_window import Ui_MainWindow
-from settings import SettingsEditDialog
+from settings_edit import SettingsEditDialog
+from mark_edit import MarkEditDialog
 from pan_and_zoom import PanAndZoom
 
 matplotlib.use('QT5Agg')
@@ -95,6 +96,7 @@ class TableDataModel(QtCore.QAbstractTableModel):
 class Mark:
     xmin = None
     xmax = None
+    color = None
 
     def __init__(self, xmin, xmax):
         self.xmin = xmin
@@ -175,7 +177,7 @@ class MyPlot:
         MyPlot._current_xmax = None
 
     def add_span_mark(self, xmin: float, xmax: float):
-        self._static_ax.axvspan(xmin=xmin, xmax=xmax, facecolor ='0.5', alpha = 0.5)
+        self._static_ax.axvspan(xmin=xmin, xmax=xmax, facecolor='0.5', alpha=0.5)
 
     def draw_plot(self, data: np.array, headers: dict, marks):
         self._static_ax.cla()
@@ -233,7 +235,7 @@ class MainApp(QtWidgets.QMainWindow):
         self.ui.setupUi(self)
 
         self.csv_delimiter = ';'
-        self.csv_accuracy = 4
+        self._csv_accuracy = 4
 
         self.verticalLayout_1 = QtWidgets.QVBoxLayout(self.ui.plotFrame)
         self.verticalLayout_1.setObjectName("horizontalLayout_1")
@@ -246,6 +248,7 @@ class MainApp(QtWidgets.QMainWindow):
         self.ui.menuActionSave_csv.triggered.connect(self.on_btnSaveCvsFile_click)
         self.ui.menuActionEditSettings.triggered.connect(self.on_btnEditSettings_click)
         self.ui.btnAddMark.clicked.connect(self.on_btnAddMark_click)
+        self.ui.btnEditMark.clicked.connect(self.on_btnEditMark_click)
         self.ui.btnDeleteMark.clicked.connect(self.on_btnDeleteMark_click)
 
         self._table_data = TableDataModel()
@@ -289,7 +292,7 @@ class MainApp(QtWidgets.QMainWindow):
                     arr = np.asarray(list(map(float, ds_arr[i])), dtype='float64')
                     float_arr[i] = arr
 
-                res_arr = np.around(float_arr, self.csv_accuracy)
+                res_arr = np.around(float_arr, self._csv_accuracy)
                 self._table_data.set_headers(dict_names)
                 self._table_data.set_items(res_arr)
 
@@ -313,18 +316,19 @@ class MainApp(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.about(self, "Ошибка сохранения в файл: ", str(ex))
 
     def on_btnEditSettings_click(self):
-        dialog = SettingsEditDialog(self.csv_delimiter, self.csv_accuracy)
+        dialog = SettingsEditDialog(self.csv_delimiter, self._csv_accuracy)
         result = dialog.exec()
         if result == 0:
             return
 
         data = dialog.get_data()
-        if data['csv_accuracy']:
+        if data['csv_delimiter']:
             self.csv_delimiter = data['csv_delimiter']
 
         if data['csv_accuracy']:
             try:
-                self.csv_accuracy = int(float(data['csv_accuracy']))
+                self._csv_accuracy = int(float(data['csv_accuracy']))
+                self._table_data.around_data(self._csv_accuracy)
             except:
                 pass
 
@@ -340,6 +344,19 @@ class MainApp(QtWidgets.QMainWindow):
                                         marks=self._table_marks.get_marks())
         except Exception as ex:
             QtWidgets.QMessageBox.about(self, "Ошибка добавления метки: ", str(ex))
+
+    def on_btnEditMark_click(self):
+        try:
+            item = self.ui.tableViewMarks.currentIndex()
+            mark = self._table_marks.get_marks()[item.row()]
+            dialog = MarkEditDialog(mark.xmin, mark.xmax)
+            err = dialog.exec()
+            if err == 0:
+                return
+
+            data = dialog.get_data()
+        except Exception as ex:
+            QtWidgets.QMessageBox.about(self, "Ошибка мзменения метки: ", str(ex))
 
     def on_btnDeleteMark_click(self):
         try:

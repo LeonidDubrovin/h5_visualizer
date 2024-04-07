@@ -88,6 +88,13 @@
              </item>
             </layout>
            </item>
+           <item>
+            <widget class="QPushButton" name="btnEditMark">
+             <property name="text">
+              <string>Изменить метку</string>
+             </property>
+            </widget>
+           </item>
           </layout>
          </widget>
         </item>
