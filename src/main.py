@@ -101,6 +101,7 @@ class MainApp(QtWidgets.QMainWindow):
                 res_data = self._table_data.get_marked_data_for_save()
 
                 names = list(self._table_data.get_headers().values())
+                names.append('mark color')
                 np.savetxt(file[0], names, newline=self.csv_delimiter, fmt="%s")
                 with open(file[0], 'ab') as f:
                     np.savetxt(f, [''], delimiter=self.csv_delimiter, fmt="%s")

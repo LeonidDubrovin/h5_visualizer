@@ -2,19 +2,21 @@ import numpy as np
 
 from PyQt6 import QtCore
 
+from src.mark import Mark
+
 
 class TableDataModel(QtCore.QAbstractTableModel):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._data = np.empty(shape=0)
         self._headers = {}
-        self._marked_rows = []
+        self._marked_rows: [Mark] = []
 
     def get_data(self) -> np.ndarray:
         return self._data
 
     def get_marked_data_for_save(self):
-        mark_arr = np.array([np.array(['x' if val else ' ']) for val in self._marked_rows])
+        mark_arr = np.array([np.array([mark.color.name() if mark else ' ']) for mark in self._marked_rows])
         data = self._data.astype(str)
         return np.hstack((data, mark_arr))
 
