@@ -17,6 +17,7 @@ from ui.main_window import Ui_MainWindow
 from settings_edit import SettingsEditDialog
 from mark_edit import MarkEditDialog
 from pan_and_zoom import PanAndZoom
+from mark import Mark
 
 matplotlib.use('QT5Agg')
 
@@ -55,11 +56,13 @@ class TableDataModel(QtCore.QAbstractTableModel):
 
     def update_marked_rows(self, marks: np.ndarray):
         self.beginResetModel()
-        self._marked_rows = [False] * self._data.shape[0]
-        for mark in marks:
-            for idx, row_arr in enumerate(self._data):
+        self._marked_rows = [None] * self._data.shape[0]
+
+        for idx, row_arr in enumerate(self._data):
+            for mark in marks:
                 if mark.xmin <= row_arr[0] <= mark.xmax:
-                    self._marked_rows[idx] = True
+                    self._marked_rows[idx] = mark
+                    break
 
         self.endResetModel()
 
@@ -83,25 +86,14 @@ class TableDataModel(QtCore.QAbstractTableModel):
             return str(value)
 
         if role == QtCore.Qt.ItemDataRole.BackgroundRole:
-            if self._marked_rows[index.row()]:
-                bgColor = QtGui.QColor(255, 0, 0, 127)
-                return QtCore.QVariant(QtGui.QColor(bgColor))
+            mark = self._marked_rows[index.row()]
+            if mark:
+                return QtCore.QVariant(mark.color)
 
     def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: QtCore.Qt.ItemDataRole):
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             if orientation == QtCore.Qt.Orientation.Horizontal:
                 return self._headers.get(section)
-
-
-class Mark:
-    xmin = None
-    xmax = None
-    color = None
-
-    def __init__(self, xmin, xmax):
-        self.xmin = xmin
-        self.xmax = xmax
-
 
 class TableMarksModel(QtCore.QAbstractTableModel):
     def __init__(self, *args, **kwargs) -> None:
@@ -110,6 +102,9 @@ class TableMarksModel(QtCore.QAbstractTableModel):
 
     def get_marks(self):
         return self._marks
+
+    def get_mark(self, idx: int) -> Mark:
+        return self._marks[idx]
 
     def set_marks(self, marks):
         self.beginResetModel()
@@ -120,6 +115,13 @@ class TableMarksModel(QtCore.QAbstractTableModel):
         self.beginResetModel()
         self._marks = np.append(self._marks, mark)
         self.endResetModel()
+
+    def have_collisions(self, new_mark: Mark) -> bool:
+        result = False
+        for mark in self._marks:
+            if not (new_mark.xmax <= mark.xmin or mark.xmax <= new_mark.xmin):
+                result = True
+        return result
 
     def rowCount(self, *args, **kwargs) -> int:
         return len(self._marks)
@@ -141,6 +143,10 @@ class TableMarksModel(QtCore.QAbstractTableModel):
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             item = self._marks[index.row()]
             return "{0:0.2f}  |  ".format(item.xmin) + "{0:0.2f}".format(item.xmax)
+
+        if role == QtCore.Qt.ItemDataRole.BackgroundRole:
+            mark = self._marks[index.row()]
+            return QtCore.QVariant(mark.color)
 
     def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: QtCore.Qt.ItemDataRole):
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
@@ -176,8 +182,8 @@ class MyPlot:
         MyPlot._current_xmin = None
         MyPlot._current_xmax = None
 
-    def add_span_mark(self, xmin: float, xmax: float):
-        self._static_ax.axvspan(xmin=xmin, xmax=xmax, facecolor='0.5', alpha=0.5)
+    def add_span_mark(self, mark: Mark):
+        self._static_ax.axvspan(xmin=mark.xmin, xmax=mark.xmax, facecolor=mark.color.name(), alpha=mark.color.alphaF())
 
     def draw_plot(self, data: np.array, headers: dict, marks):
         self._static_ax.cla()
@@ -196,7 +202,7 @@ class MyPlot:
         plt.connect('key_press_event', toggle_selector)
 
         for mark in marks:
-            self.add_span_mark(mark.xmin, mark.xmax)
+            self.add_span_mark(mark)
 
         self._canvas.draw()
 
@@ -336,8 +342,15 @@ class MainApp(QtWidgets.QMainWindow):
         try:
             xmin, xmax = self._my_plot.get_xmin_xmax()
             if xmin and xmax:
+                color = QtGui.QColor("#aaff00")
+                color.setAlphaF(Mark.get_alpha())
+                mark = Mark(xmin=xmin, xmax=xmax, color=color)
+                if self._table_marks.have_collisions(mark):
+                    raise Exception("Метка включает в себя другие метки")
+
                 self._my_plot.clear_xmin_xmax()
-                self._table_marks.add_mark(Mark(xmin=xmin, xmax=xmax))
+
+                self._table_marks.add_mark(mark)
                 self._table_data.update_marked_rows(self._table_marks.get_marks())
                 self._my_plot.draw_plot(data=self._table_data.get_data(),
                                         headers=self._table_data.get_headers(),
@@ -348,13 +361,24 @@ class MainApp(QtWidgets.QMainWindow):
     def on_btnEditMark_click(self):
         try:
             item = self.ui.tableViewMarks.currentIndex()
-            mark = self._table_marks.get_marks()[item.row()]
-            dialog = MarkEditDialog(mark.xmin, mark.xmax)
+            mark = self._table_marks.get_mark(item.row())
+            dialog = MarkEditDialog(mark)
             err = dialog.exec()
             if err == 0:
                 return
 
             data = dialog.get_data()
+            if data['xmin']:
+                mark.xmin = data['xmin']
+            if data['xmax']:
+                mark.xmax = data['xmax']
+            if data['color']:
+                mark.color = data['color']
+
+            self._table_data.update_marked_rows(self._table_marks.get_marks())
+            self._my_plot.draw_plot(data=self._table_data.get_data(),
+                                    headers=self._table_data.get_headers(),
+                                    marks=self._table_marks.get_marks())
         except Exception as ex:
             QtWidgets.QMessageBox.about(self, "Ошибка мзменения метки: ", str(ex))
 
