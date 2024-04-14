@@ -12,7 +12,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
         Dialog.setObjectName("Dialog")
-        Dialog.resize(407, 147)
+        Dialog.resize(407, 142)
         self.gridLayout = QtWidgets.QGridLayout(Dialog)
         self.gridLayout.setObjectName("gridLayout")
         self.label_2 = QtWidgets.QLabel(parent=Dialog)
@@ -41,7 +41,7 @@ class Ui_Dialog(object):
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
-        Dialog.setWindowTitle(_translate("Dialog", "Dialog"))
+        Dialog.setWindowTitle(_translate("Dialog", "Изменение настроек"))
         self.label_2.setText(_translate("Dialog", "Разделитель в csv файле"))
         self.label.setText(_translate("Dialog", "Количество цифр после запятой в csv файле"))
         self.btnAdd.setText(_translate("Dialog", "Изменить"))

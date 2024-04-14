@@ -18,17 +18,15 @@ class MarkEditDialog(QtWidgets.QDialog):
 
         self.ui.txtXmin.setText(str(mark.xmin))
         self.ui.txtXmax.setText(str(mark.xmax))
+        self.ui.frameColor.setStyleSheet("background-color: " + self._color.name())
 
-    def get_data(self):
-        return {
-            "xmin": float(self.ui.txtXmin.text()),
-            "xmax": float(self.ui.txtXmax.text()),
-            "color": self._color
-        }
+    def get_mark(self) -> Mark:
+        return Mark(xmin=float(self.ui.txtXmin.text()), xmax=float(self.ui.txtXmax.text()), color=self._color)
 
     def color_picker(self):
         color = QtWidgets.QColorDialog.getColor()
         color.setAlphaF(Mark.get_alpha())
         self._color = color
+        self.ui.frameColor.setStyleSheet("background-color: " + self._color.name())
 
 

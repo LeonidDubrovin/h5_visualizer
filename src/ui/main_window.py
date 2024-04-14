@@ -27,6 +27,9 @@ class Ui_MainWindow(object):
         self.verticalWidget.setObjectName("verticalWidget")
         self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.verticalWidget)
         self.verticalLayout_2.setObjectName("verticalLayout_2")
+        self.comboBoxScatterPlot = QtWidgets.QComboBox(parent=self.verticalWidget)
+        self.comboBoxScatterPlot.setObjectName("comboBoxScatterPlot")
+        self.verticalLayout_2.addWidget(self.comboBoxScatterPlot)
         self.tableViewData = QtWidgets.QTableView(parent=self.verticalWidget)
         self.tableViewData.setMinimumSize(QtCore.QSize(0, 0))
         self.tableViewData.setMaximumSize(QtCore.QSize(16777215, 16777215))
@@ -91,7 +94,7 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "Визуализатор формата h5"))
         self.btnDeleteMark.setText(_translate("MainWindow", "Удалить метку"))
         self.btnAddMark.setText(_translate("MainWindow", "Добавить метку"))
         self.btnEditMark.setText(_translate("MainWindow", "Изменить метку"))

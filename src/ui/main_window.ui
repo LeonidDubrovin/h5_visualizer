@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>Визуализатор формата h5</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <property name="enabled">
@@ -31,6 +31,9 @@
            </size>
           </property>
           <layout class="QVBoxLayout" name="verticalLayout_2">
+           <item>
+            <widget class="QComboBox" name="comboBoxScatterPlot"/>
+           </item>
            <item>
             <widget class="QTableView" name="tableViewData">
              <property name="minimumSize">

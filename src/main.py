@@ -1,237 +1,22 @@
 import random
 import sys
-import os
 import h5py
 import numpy as np
-import matplotlib.pyplot as plt
 from PyQt6 import QtWidgets, QtCore, QtGui
 
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.widgets import RectangleSelector, SpanSelector
 import matplotlib
-from matplotlib.backend_bases import MouseButton
 
 from ui.main_window import Ui_MainWindow
-from settings_edit import SettingsEditDialog
-from mark_edit import MarkEditDialog
-from pan_and_zoom import PanAndZoom
+from edit_settings import SettingsEditDialog
+from edit_mark import MarkEditDialog
 from mark import Mark
+from table_marks_model import TableMarksModel
+from table_data_model import TableDataModel
+from plot_model import MyPlot, GraphTypes
+
 
 matplotlib.use('QT5Agg')
-
-
-class TableDataModel(QtCore.QAbstractTableModel):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._data = np.empty(shape=0)
-        self._headers = {}
-        self._marked_rows = []
-
-    def get_data(self) -> np.ndarray:
-        return self._data
-
-    def get_marked_data_for_save(self):
-        mark_arr = np.array([np.array(['x' if val else ' ']) for val in self._marked_rows])
-        data = self._data.astype(str)
-        return np.hstack((data, mark_arr))
-
-    def get_headers(self):
-        return self._headers
-
-    def get_marked_rows(self) -> list:
-        return self._marked_rows
-
-    def set_items(self, items):
-        self.beginResetModel()
-        self._data = items
-        self.update_marked_rows(np.empty(shape=0))
-        self.endResetModel()
-
-    def set_headers(self, headers):
-        self.beginResetModel()
-        self._headers = headers
-        self.endResetModel()
-
-    def update_marked_rows(self, marks: np.ndarray):
-        self.beginResetModel()
-        self._marked_rows = [None] * self._data.shape[0]
-
-        for idx, row_arr in enumerate(self._data):
-            for mark in marks:
-                if mark.xmin <= row_arr[0] <= mark.xmax:
-                    self._marked_rows[idx] = mark
-                    break
-
-        self.endResetModel()
-
-    def around_data(self, accuracy: int):
-        np.around(self._data, accuracy, out=self._data)
-
-    def rowCount(self, *args, **kwargs) -> int:
-        return len(self._data)
-
-    def columnCount(self, *args, **kwargs) -> int:
-        if len(self._data) > 0:
-            return len(self._data[0])
-        return 0
-
-    def data(self, index: QtCore.QModelIndex, role: QtCore.Qt.ItemDataRole):
-        if not index.isValid():
-            return
-
-        if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            value = self._data[index.row(), index.column()]
-            return str(value)
-
-        if role == QtCore.Qt.ItemDataRole.BackgroundRole:
-            mark = self._marked_rows[index.row()]
-            if mark:
-                return QtCore.QVariant(mark.color)
-
-    def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: QtCore.Qt.ItemDataRole):
-        if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            if orientation == QtCore.Qt.Orientation.Horizontal:
-                return self._headers.get(section)
-
-class TableMarksModel(QtCore.QAbstractTableModel):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._marks = np.empty(shape=0)
-
-    def get_marks(self):
-        return self._marks
-
-    def get_mark(self, idx: int) -> Mark:
-        return self._marks[idx]
-
-    def set_marks(self, marks):
-        self.beginResetModel()
-        self._marks = marks
-        self.endResetModel()
-
-    def add_mark(self, mark: Mark):
-        self.beginResetModel()
-        self._marks = np.append(self._marks, mark)
-        self.endResetModel()
-
-    def have_collisions(self, new_mark: Mark) -> bool:
-        result = False
-        for mark in self._marks:
-            if not (new_mark.xmax <= mark.xmin or mark.xmax <= new_mark.xmin):
-                result = True
-        return result
-
-    def rowCount(self, *args, **kwargs) -> int:
-        return len(self._marks)
-
-    def columnCount(self, *args, **kwargs) -> int:
-        # вывод в одну колонку
-        return 1
-
-    def delete_mark(self, item):
-        self.set_marks(np.delete(self._marks, item.row()))
-
-    def delete_marks(self):
-        self.set_marks(np.empty(shape=0))
-
-    def data(self, index: QtCore.QModelIndex, role: QtCore.Qt.ItemDataRole):
-        if not index.isValid():
-            return
-
-        if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            item = self._marks[index.row()]
-            return "{0:0.2f}  |  ".format(item.xmin) + "{0:0.2f}".format(item.xmax)
-
-        if role == QtCore.Qt.ItemDataRole.BackgroundRole:
-            mark = self._marks[index.row()]
-            return QtCore.QVariant(mark.color)
-
-    def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: QtCore.Qt.ItemDataRole):
-        if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            if orientation == QtCore.Qt.Orientation.Horizontal:
-                return "Метки"
-
-
-class MyPlot:
-    _canvas = None
-    _static_ax = None
-    _current_xmin = None
-    _current_xmax = None
-
-    _span_marks = None
-
-    def __init__(self):
-        fig = plt.figure()
-        fig.pan_zoom = PanAndZoom(fig)
-        self._canvas = FigureCanvas(fig)
-        self._static_ax = self._canvas.figure.subplots()
-
-    def get_canvas(self):
-        return self._canvas
-
-    def get_ax(self):
-        return self._static_ax
-
-    def get_xmin_xmax(self):
-        return self._current_xmin, self._current_xmax
-
-    @staticmethod
-    def clear_xmin_xmax():
-        MyPlot._current_xmin = None
-        MyPlot._current_xmax = None
-
-    def add_span_mark(self, mark: Mark):
-        self._static_ax.axvspan(xmin=mark.xmin, xmax=mark.xmax, facecolor=mark.color.name(), alpha=mark.color.alphaF())
-
-    def draw_plot(self, data: np.array, headers: dict, marks):
-        self._static_ax.cla()
-
-        if len(data.shape) == 2:
-            cols = data.shape[1]
-            for i in range(1, cols):
-                # scatter or plot
-                self._static_ax.scatter(data[:, 0], data[:, i], label=headers[i])
-
-        self._static_ax.grid(True, color="grey", linewidth="0.4", linestyle="-.")
-        self._static_ax.legend()
-        plt.xlabel(headers[0])
-
-        toggle_selector = self.get_selector(self._static_ax)
-        plt.connect('key_press_event', toggle_selector)
-
-        for mark in marks:
-            self.add_span_mark(mark)
-
-        self._canvas.draw()
-
-    @staticmethod
-    def deactivate_selector():
-        MyPlot._current_xmin = None
-        MyPlot._current_xmax = None
-        MyPlot.toggle_selector.SS.clear()
-
-    @staticmethod
-    def get_selector(ax):
-        MyPlot.toggle_selector.SS = SpanSelector(ax, MyPlot.line_select_callback,
-                                                 "horizontal",
-                                                 button=[MouseButton.LEFT],
-                                                 useblit=True,
-                                                 props=dict(alpha=0.5, facecolor="tab:blue"),
-                                                 interactive=True,
-                                                 drag_from_anywhere=True)
-        return MyPlot.toggle_selector
-
-    @staticmethod
-    def line_select_callback(xmin, xmax):
-        print("xmin, xmax: ", xmin, xmax)
-        MyPlot._current_xmin = xmin
-        MyPlot._current_xmax = xmax
-
-    @staticmethod
-    def toggle_selector(event):
-        print(' Key pressed.')
 
 
 class MainApp(QtWidgets.QMainWindow):
@@ -242,6 +27,8 @@ class MainApp(QtWidgets.QMainWindow):
 
         self.csv_delimiter = ';'
         self._csv_accuracy = 4
+        self._graph_types = [dt.value for dt in GraphTypes]
+        self._selected_graph_type: GraphTypes = GraphTypes.scatter
 
         self.verticalLayout_1 = QtWidgets.QVBoxLayout(self.ui.plotFrame)
         self.verticalLayout_1.setObjectName("horizontalLayout_1")
@@ -265,7 +52,9 @@ class MainApp(QtWidgets.QMainWindow):
         self.ui.tableViewMarks.setModel(self._table_marks)
         self.ui.tableViewMarks.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
 
-        self.setWindowTitle("h5 visualizer")
+        self.ui.comboBoxScatterPlot.addItems(self._graph_types)
+        self.ui.comboBoxScatterPlot.currentIndexChanged.connect(self.onChangedComboBoxScatterPlot)
+
         self.draw_graphic()
 
     def update_app(self):
@@ -277,7 +66,8 @@ class MainApp(QtWidgets.QMainWindow):
         if data.size and data.shape and data.shape[0]:
             self._my_plot.draw_plot(data=data,
                                     headers=self._table_data.get_headers(),
-                                    marks=self._table_marks.get_marks())
+                                    marks=self._table_marks.get_marks(),
+                                    graph_type=self._selected_graph_type)
 
     def on_btnOpenH5File_click(self):
         file = QtWidgets.QFileDialog.getOpenFileName(self, "Выберите файл", filter="h5 (*.h5);;hdf5  (*.hdf5)")
@@ -342,9 +132,20 @@ class MainApp(QtWidgets.QMainWindow):
         try:
             xmin, xmax = self._my_plot.get_xmin_xmax()
             if xmin and xmax:
-                color = QtGui.QColor("#aaff00")
+                color = QtGui.QColor(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
                 color.setAlphaF(Mark.get_alpha())
-                mark = Mark(xmin=xmin, xmax=xmax, color=color)
+                tmp_mark = Mark(xmin=xmin, xmax=xmax, color=color)
+
+                if self._table_marks.have_collisions(tmp_mark):
+                    raise Exception("Метка включает в себя другие метки")
+
+                dialog = MarkEditDialog(tmp_mark)
+                err = dialog.exec()
+                if err == 0:
+                    return
+
+                mark = dialog.get_mark()
+
                 if self._table_marks.have_collisions(mark):
                     raise Exception("Метка включает в себя другие метки")
 
@@ -354,7 +155,9 @@ class MainApp(QtWidgets.QMainWindow):
                 self._table_data.update_marked_rows(self._table_marks.get_marks())
                 self._my_plot.draw_plot(data=self._table_data.get_data(),
                                         headers=self._table_data.get_headers(),
-                                        marks=self._table_marks.get_marks())
+                                        marks=self._table_marks.get_marks(),
+                                        graph_type=self._selected_graph_type)
+
         except Exception as ex:
             QtWidgets.QMessageBox.about(self, "Ошибка добавления метки: ", str(ex))
 
@@ -367,18 +170,18 @@ class MainApp(QtWidgets.QMainWindow):
             if err == 0:
                 return
 
-            data = dialog.get_data()
-            if data['xmin']:
-                mark.xmin = data['xmin']
-            if data['xmax']:
-                mark.xmax = data['xmax']
-            if data['color']:
-                mark.color = data['color']
+            edited_mark = dialog.get_mark()
 
+            if edited_mark.xmin:
+                mark.xmin = edited_mark.xmin
+            if edited_mark.xmax:
+                mark.xmax = edited_mark.xmax
+            if edited_mark.color:
+                mark.color = edited_mark.color
+
+            self._my_plot.update_plot(marks=self._table_marks.get_marks())
             self._table_data.update_marked_rows(self._table_marks.get_marks())
-            self._my_plot.draw_plot(data=self._table_data.get_data(),
-                                    headers=self._table_data.get_headers(),
-                                    marks=self._table_marks.get_marks())
+
         except Exception as ex:
             QtWidgets.QMessageBox.about(self, "Ошибка мзменения метки: ", str(ex))
 
@@ -390,9 +193,26 @@ class MainApp(QtWidgets.QMainWindow):
                 self._table_data.update_marked_rows(self._table_marks.get_marks())
                 self._my_plot.draw_plot(data=self._table_data.get_data(),
                                         headers=self._table_data.get_headers(),
-                                    marks=self._table_marks.get_marks())
+                                        marks=self._table_marks.get_marks(),
+                                        graph_type=self._selected_graph_type)
         except Exception as ex:
             QtWidgets.QMessageBox.about(self, "Ошибка удаления метки: ", str(ex))
+
+    def onChangedComboBoxScatterPlot(self, idx):
+        for gt in GraphTypes:
+            if gt.value == self.ui.comboBoxScatterPlot.currentText():
+                self._selected_graph_type = gt
+                self._my_plot.draw_plot(data=self._table_data.get_data(),
+                                        headers=self._table_data.get_headers(),
+                                        marks=self._table_marks.get_marks(),
+                                        graph_type=gt)
+
+        # try:
+        #     self._my_plot.draw_plot(data=self._table_data.get_data(),
+        #                             headers=self._table_data.get_headers(),
+        #                             marks=self._table_marks.get_marks())
+        # except Exception as ex:
+        #     QtWidgets.QMessageBox.about(self, "Ошибка удаления метки: ", str(ex))
 
 
 def main():
