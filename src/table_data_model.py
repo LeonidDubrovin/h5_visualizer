@@ -2,7 +2,7 @@ import numpy as np
 
 from PyQt6 import QtCore
 
-from src.mark import Mark
+from mark import Mark
 
 
 class TableDataModel(QtCore.QAbstractTableModel):
