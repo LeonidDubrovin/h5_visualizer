@@ -2,7 +2,7 @@ import random
 import sys
 import h5py
 import numpy as np
-from PyQt6 import QtWidgets, QtCore, QtGui
+from PyQt6 import QtWidgets, QtGui
 
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 import matplotlib
@@ -27,7 +27,6 @@ class MainApp(QtWidgets.QMainWindow):
 
         self.csv_delimiter = ';'
         self._csv_accuracy = 4
-        self._graph_types = [dt.value for dt in GraphTypes]
         self._selected_graph_type: GraphTypes = GraphTypes.scatter
 
         self.verticalLayout_1 = QtWidgets.QVBoxLayout(self.ui.plotFrame)
@@ -52,7 +51,8 @@ class MainApp(QtWidgets.QMainWindow):
         self.ui.tableViewMarks.setModel(self._table_marks)
         self.ui.tableViewMarks.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
 
-        self.ui.comboBoxScatterPlot.addItems(self._graph_types)
+        graph_types = [dt.value for dt in GraphTypes]
+        self.ui.comboBoxScatterPlot.addItems(graph_types)
         self.ui.comboBoxScatterPlot.currentIndexChanged.connect(self.onChangedComboBoxScatterPlot)
 
         self.draw_graphic()
@@ -62,12 +62,15 @@ class MainApp(QtWidgets.QMainWindow):
         self.draw_graphic()
 
     def draw_graphic(self):
-        data = self._table_data.get_data()
-        if data.size and data.shape and data.shape[0]:
-            self._my_plot.draw_plot(data=data,
-                                    headers=self._table_data.get_headers(),
-                                    marks=self._table_marks.get_marks(),
-                                    graph_type=self._selected_graph_type)
+        try:
+            data = self._table_data.get_data()
+            if data.size and data.shape and data.shape[0]:
+                self._my_plot.draw_plot(data=data,
+                                        headers=self._table_data.get_headers(),
+                                        marks=self._table_marks.get_marks(),
+                                        graph_type=self._selected_graph_type)
+        except Exception as ex:
+            QtWidgets.QMessageBox.about(self, "Ошибка выбора типа графика: ", str(ex))
 
     def on_btnOpenH5File_click(self):
         file = QtWidgets.QFileDialog.getOpenFileName(self, "Выберите файл", filter="h5 (*.h5);;hdf5  (*.hdf5)")
@@ -200,20 +203,16 @@ class MainApp(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.about(self, "Ошибка удаления метки: ", str(ex))
 
     def onChangedComboBoxScatterPlot(self, idx):
-        for gt in GraphTypes:
-            if gt.value == self.ui.comboBoxScatterPlot.currentText():
-                self._selected_graph_type = gt
-                self._my_plot.draw_plot(data=self._table_data.get_data(),
-                                        headers=self._table_data.get_headers(),
-                                        marks=self._table_marks.get_marks(),
-                                        graph_type=gt)
-
-        # try:
-        #     self._my_plot.draw_plot(data=self._table_data.get_data(),
-        #                             headers=self._table_data.get_headers(),
-        #                             marks=self._table_marks.get_marks())
-        # except Exception as ex:
-        #     QtWidgets.QMessageBox.about(self, "Ошибка удаления метки: ", str(ex))
+        try:
+            for gt in GraphTypes:
+                if gt.value == self.ui.comboBoxScatterPlot.currentText():
+                    self._selected_graph_type = gt
+                    self._my_plot.draw_plot(data=self._table_data.get_data(),
+                                            headers=self._table_data.get_headers(),
+                                            marks=self._table_marks.get_marks(),
+                                            graph_type=gt)
+        except Exception as ex:
+            QtWidgets.QMessageBox.about(self, "Ошибка выбора типа графика: ", str(ex))
 
 
 def main():

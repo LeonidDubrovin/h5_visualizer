@@ -55,25 +55,43 @@ class MyPlot:
         self._span_marks_list.clear()
 
     def draw_plot(self, data: np.array, headers: dict, marks, graph_type: GraphTypes):
+        divider = 250
+
+        def scale_second_xaxis_to(x):
+            return x / divider
+
+        def scale_second_xaxis_from(x):
+            return x * divider
+
+        if len(data.shape) != 2:
+            print("Размерность данных должны быть равна 2, сейчас: ", data.shape)
+            return
+
+        if not headers:
+            print("Нет заголовков: ")
+            return
+
         self._static_ax.cla()
 
-        if len(data.shape) == 2:
-            cols = data.shape[1]
-            for i in range(1, cols):
-                if graph_type == GraphTypes.scatter:
-                    self._static_ax.scatter(data[:, 0], data[:, i], label=headers[i])
-                elif graph_type == GraphTypes.plot:
-                    self._static_ax.plot(data[:, 0], data[:, i], label=headers[i])
-                else:
-                    raise Exception("Unknown graph type: ", graph_type.value)
+        cols = data.shape[1]
+        for i in range(1, cols):
+            if graph_type == GraphTypes.scatter:
+                self._static_ax.scatter(data[:, 0], data[:, i], label=headers[i])
+            elif graph_type == GraphTypes.plot:
+                self._static_ax.plot(data[:, 0], data[:, i], label=headers[i])
+            else:
+                raise Exception("Unknown graph type: ", graph_type.value)
 
         self._static_ax.grid(True, color="grey", linewidth="0.4", linestyle="-.")
         self._static_ax.legend()
-        if headers:
-            plt.xlabel(headers[0])
+
+        plt.xlabel(headers[0])
 
         toggle_selector = self.get_selector(self._static_ax)
         plt.connect('key_press_event', toggle_selector)
+
+        secondary_ax = self._static_ax.secondary_xaxis('top', functions=(scale_second_xaxis_to, scale_second_xaxis_from))
+        secondary_ax.set_xlabel(f"{headers[0]} / {divider}")
 
         for mark in marks:
             self.add_span_mark(mark)
