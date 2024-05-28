@@ -11,10 +11,9 @@ from pan_and_zoom import PanAndZoom
 from mark import Mark
 
 
-# GraphTypes = Enum('Scatter', 'Plot')
 class GraphTypes(Enum):
-    scatter = 'Scatter'
     plot = 'Plot'
+    scatter = 'Scatter'
 
 
 class MyPlot:

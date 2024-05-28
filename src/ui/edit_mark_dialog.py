@@ -64,7 +64,7 @@ class Ui_Dialog(object):
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
-        Dialog.setWindowTitle(_translate("Dialog", "Редактирование марки"))
+        Dialog.setWindowTitle(_translate("Dialog", "Редактирование метки"))
         self.label_xmax.setText(_translate("Dialog", "xmin"))
         self.label_xmin.setText(_translate("Dialog", "xmax"))
         self.btnColorPick.setText(_translate("Dialog", "Выбрать цвет"))

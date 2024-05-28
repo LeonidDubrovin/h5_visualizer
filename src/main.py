@@ -27,7 +27,7 @@ class MainApp(QtWidgets.QMainWindow):
 
         self.csv_delimiter = ';'
         self._csv_accuracy = 4
-        self._selected_graph_type: GraphTypes = GraphTypes.scatter
+        self._selected_graph_type: GraphTypes = GraphTypes.plot
 
         self.verticalLayout_1 = QtWidgets.QVBoxLayout(self.ui.plotFrame)
         self.verticalLayout_1.setObjectName("horizontalLayout_1")
